@@ -1,24 +1,22 @@
 pub mod client_interceptor;
 pub mod cluster_data_impl;
-pub mod convert;
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
 
-use bincode::serialize;
 use bytes::Bytes;
-use futures::{future::join_all, StreamExt};
+use futures::StreamExt;
 use jito_protos::{
     bundle::{Bundle, BundleResult},
     searcher::{
-        mempool_subscription, searcher_service_client::SearcherServiceClient, MempoolSubscription,
-        SendBundleRequest, SubscribeBundleResultsRequest, WriteLockedAccountSubscriptionV0,
+        searcher_service_client::SearcherServiceClient,
+        SendBundleRequest, SubscribeBundleResultsRequest,
     },
+    packet::{Packet as ProtoPacket, Meta as ProtoMeta}
 };
 use log::*;
-use solana_client::nonblocking::tpu_client::TpuClient;
 use solana_sdk::{clock::Slot, pubkey::Pubkey, transaction::VersionedTransaction};
 use thiserror::Error;
 use tokio::sync::{
@@ -32,7 +30,20 @@ use tonic::{
     Status,
 };
 
-use crate::convert::{proto_packet_from_versioned_tx, versioned_tx_from_packet};
+fn proto_packet_from_versioned_tx(tx: &VersionedTransaction) -> ProtoPacket {
+    let data = bincode::serialize(tx).expect("serializes");
+    let size = data.len() as u64;
+    ProtoPacket {
+        data,
+        meta: Some(ProtoMeta {
+            size,
+            addr: "".to_string(),
+            port: 0,
+            flags: None,
+            sender_stake: 0,
+        }),
+    }
+}
 
 /// BundleId is expected to be a hash of the contained transaction signatures:
 /// fn derive_bundle_id(transactions: &[VersionedTransaction]) -> String {
@@ -80,7 +91,7 @@ pub struct SearcherClient<C: ClusterData, T> {
 
 impl<C: ClusterData + Clone, T> SearcherClient<C, T>
 where
-    T: tonic::client::GrpcService<tonic::body::BoxBody>,
+    T: tonic::client::GrpcService<tonic::body::Body>,
     T::Error: Into<StdError>,
     T::ResponseBody: Body<Data = Bytes> + Send + 'static,
     <T::ResponseBody as Body>::Error: Into<StdError> + Send,
@@ -135,29 +146,6 @@ where
         Ok(resp.into_inner().uuid)
     }
 
-    /// Sends transactions through the normal pipeline, regardless of if the leader is running jito-solana.
-    /// Returns a list of results corresponding to the supplied transactions ordering.
-    pub async fn send_transactions(
-        &self,
-        tpu_client: &TpuClient,
-        transactions: Vec<VersionedTransaction>,
-    ) -> Vec<SearcherClientResult<()>> {
-        let futs = transactions
-            .into_iter()
-            .map(|tx| async move {
-                let serialized_tx = serialize(&tx)
-                    .map_err(|_e| SearcherClientError::TransactionSerializationError)?;
-                if !tpu_client.send_wire_transaction(serialized_tx).await {
-                    Err(SearcherClientError::TpuClientError)
-                } else {
-                    Ok(())
-                }
-            })
-            .collect::<Vec<_>>();
-
-        join_all(futs).await.into_iter().collect()
-    }
-
     pub async fn subscribe_mempool_accounts(
         &self,
         accounts: &[Pubkey],
@@ -165,54 +153,56 @@ where
         regions: Vec<String>,
         buffer_size: usize,
     ) -> SearcherClientResult<Receiver<Vec<VersionedTransaction>>> {
-        let (sender, receiver) = channel(buffer_size);
+        unimplemented!();
+       
+        // let (sender, receiver) = channel(buffer_size);
 
-        let mut stream = self
-            .searcher_service_client
-            .lock()
-            .await
-            .subscribe_mempool(MempoolSubscription {
-                msg: Some(mempool_subscription::Msg::WlaV0Sub(
-                    WriteLockedAccountSubscriptionV0 {
-                        accounts: accounts.iter().map(|account| account.to_string()).collect(),
-                    },
-                )),
-                regions,
-            })
-            .await?
-            .into_inner();
+        // let mut stream = self
+        //     .searcher_service_client
+        //     .lock()
+        //     .await
+        //     .subscribe_mempool(MempoolSubscription {
+        //         msg: Some(mempool_subscription::Msg::WlaV0Sub(
+        //             WriteLockedAccountSubscriptionV0 {
+        //                 accounts: accounts.iter().map(|account| account.to_string()).collect(),
+        //             },
+        //         )),
+        //         regions,
+        //     })
+        //     .await?
+        //     .into_inner();
 
-        let exit = self.exit.clone();
-        tokio::spawn(async move {
-            while !exit.load(Ordering::Relaxed) {
-                let msg = match stream.next().await {
-                    None => {
-                        error!("mempool stream closed");
-                        return;
-                    }
-                    Some(res) => {
-                        if let Err(e) = res {
-                            error!("mempool stream received error status: {e}");
-                            return;
-                        }
-                        res.unwrap()
-                    }
-                };
+        // let exit = self.exit.clone();
+        // tokio::spawn(async move {
+        //     while !exit.load(Ordering::Relaxed) {
+        //         let msg = match stream.next().await {
+        //             None => {
+        //                 error!("mempool stream closed");
+        //                 return;
+        //             }
+        //             Some(res) => {
+        //                 if let Err(e) = res {
+        //                     error!("mempool stream received error status: {e}");
+        //                     return;
+        //                 }
+        //                 res.unwrap()
+        //             }
+        //         };
 
-                let transactions = msg
-                    .transactions
-                    .iter()
-                    .filter_map(versioned_tx_from_packet)
-                    .collect();
+        //         let transactions = msg
+        //             .transactions
+        //             .iter()
+        //             .filter_map(versioned_tx_from_packet)
+        //             .collect();
 
-                if let Err(e) = sender.send(transactions).await {
-                    error!("error sending transactions: {e}");
-                    return;
-                }
-            }
-        });
+        //         if let Err(e) = sender.send(transactions).await {
+        //             error!("error sending transactions: {e}");
+        //             return;
+        //         }
+        //     }
+        // });
 
-        Ok(receiver)
+        // Ok(receiver)
     }
 
     pub async fn subscribe_bundle_results(

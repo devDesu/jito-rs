@@ -1,8 +1,10 @@
-use tonic_build::configure;
+use tonic_prost_build::configure;
 
 fn main() {
+    unsafe { std::env::set_var("PROTOC", protobuf_src::protoc()) };
     configure()
-        .compile(
+        .build_server(false)
+        .compile_protos(
             &[
                 "mev-protos/auth.proto",
                 "mev-protos/block.proto",

@@ -8,7 +8,7 @@ use jito_protos::auth::{
     GenerateAuthTokensRequest, RefreshAccessTokenRequest, Role, Token,
 };
 use prost_types::Timestamp;
-use solana_metrics::datapoint_info;
+// use solana_metrics::datapoint_info;
 use solana_sdk::signature::{Keypair, Signer};
 use tokio::time::sleep;
 use tonic::{service::Interceptor, transport::Channel, Request, Status};
@@ -89,12 +89,12 @@ impl ClientInterceptor {
         let mut access_token_expiration = access_token_expiration;
 
         loop {
-            let access_token_ttl = SystemTime::try_from(access_token_expiration.clone())
+            let access_token_ttl = SystemTime::try_from(access_token_expiration)
                 .unwrap()
                 .duration_since(SystemTime::now())
                 .unwrap_or_else(|_| Duration::from_secs(0));
             let refresh_token_ttl =
-                SystemTime::try_from(refresh_token.expires_at_utc.as_ref().unwrap().clone())
+                SystemTime::try_from(*refresh_token.expires_at_utc.as_ref().unwrap())
                     .unwrap()
                     .duration_since(SystemTime::now())
                     .unwrap_or_else(|_| Duration::from_secs(0));
@@ -120,7 +120,7 @@ impl ClientInterceptor {
                             true
                         }
                     };
-                    datapoint_info!("searcher-full-auth", ("is_error", is_error, bool));
+                    // datapoint_info!("searcher-full-auth", ("is_error", is_error, bool));
                 }
                 // re-up the access token if it expires soon
                 (_, true) => {
@@ -140,7 +140,7 @@ impl ClientInterceptor {
                         }
                     };
 
-                    datapoint_info!("searcher-refresh-auth", ("is_error", is_error, bool));
+                    // datapoint_info!("searcher-refresh-auth", ("is_error", is_error, bool));
                 }
                 _ => {
                     sleep(Duration::from_secs(60)).await;

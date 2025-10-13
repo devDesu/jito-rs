@@ -50,11 +50,11 @@ impl ClusterDataImpl {
         exit: Arc<AtomicBool>,
     ) -> Self
     where
-        T: tonic::client::GrpcService<tonic::body::BoxBody> + Send + 'static,
+        T: tonic::client::GrpcService<tonic::body::Body> + Send + 'static,
         T::Error: Into<StdError>,
         T::ResponseBody: Body<Data = Bytes> + Send + 'static,
         <T::ResponseBody as Body>::Error: Into<StdError> + Send,
-        <T as tonic::client::GrpcService<tonic::body::BoxBody>>::Future: std::marker::Send,
+        <T as tonic::client::GrpcService<tonic::body::Body>>::Future: std::marker::Send,
     {
         let current_slot = Arc::new(AtomicU64::new(0));
         let jito_leader_schedule_cache = Arc::new(Mutex::new(BTreeMap::new()));
@@ -112,11 +112,11 @@ impl ClusterDataImpl {
         mut fetch_interval: Interval,
         exit: Arc<AtomicBool>,
     ) where
-        T: tonic::client::GrpcService<tonic::body::BoxBody> + Send,
+        T: tonic::client::GrpcService<tonic::body::Body> + Send,
         T::Error: Into<StdError>,
         T::ResponseBody: Body<Data = Bytes> + Send + 'static,
         <T::ResponseBody as Body>::Error: Into<StdError> + Send,
-        <T as tonic::client::GrpcService<tonic::body::BoxBody>>::Future: std::marker::Send,
+        <T as tonic::client::GrpcService<tonic::body::Body>>::Future: std::marker::Send,
     {
         const MAX_RETRIES: usize = 5;
         while !exit.load(Ordering::Relaxed) {
@@ -167,11 +167,11 @@ impl ClusterDataImpl {
         max_retries: usize,
     ) -> Option<ConnectedLeadersResponse>
     where
-        T: tonic::client::GrpcService<tonic::body::BoxBody> + Send,
+        T: tonic::client::GrpcService<tonic::body::Body> + Send,
         T::Error: Into<StdError>,
         T::ResponseBody: Body<Data = Bytes> + Send + 'static,
         <T::ResponseBody as Body>::Error: Into<StdError> + Send,
-        <T as tonic::client::GrpcService<tonic::body::BoxBody>>::Future: std::marker::Send,
+        <T as tonic::client::GrpcService<tonic::body::Body>>::Future: std::marker::Send,
     {
         for _ in 0..max_retries {
             if let Ok(resp) = searcher_service_client
@@ -209,7 +209,7 @@ mod rpc_utils {
 
     use futures_util::StreamExt;
     use solana_client::{nonblocking::pubsub_client::PubsubClient, rpc_response::SlotUpdate};
-    use solana_metrics::{datapoint_error, datapoint_info};
+    // use solana_metrics::{datapoint_error, datapoint_info};
     use solana_sdk::clock::Slot;
     use tokio::{sync::mpsc::Sender, time::sleep};
 
@@ -233,12 +233,12 @@ mod rpc_utils {
                             if let SlotUpdate::FirstShredReceived { slot, timestamp: _ } =
                                 slot_update
                             {
-                                datapoint_info!("slot_subscribe_slot", ("slot", slot, i64));
+                                // datapoint_info!("slot_subscribe_slot", ("slot", slot, i64));
                                 if slot_sender.send(slot).await.is_err() {
-                                    datapoint_error!(
-                                        "slot_subscribe_send_error",
-                                        ("errors", 1, i64)
-                                    );
+                                    // datapoint_error!(
+                                    //     "slot_subscribe_send_error",
+                                    //     ("errors", 1, i64)
+                                    // );
                                     exit.store(true, Ordering::Relaxed);
                                     return;
                                 }
@@ -249,27 +249,27 @@ mod rpc_utils {
                             }
                         }
                         slot_subscribe_disconnect_errors += 1;
-                        datapoint_error!(
-                            "slot_subscribe_disconnect_error",
-                            ("errors", slot_subscribe_disconnect_errors, i64)
-                        );
+                        // datapoint_error!(
+                        //     "slot_subscribe_disconnect_error",
+                        //     ("errors", slot_subscribe_disconnect_errors, i64)
+                        // );
                     }
                     Err(e) => {
                         slot_subscribe_errors += 1;
-                        datapoint_error!(
-                            "slot_subscribe_error",
-                            ("errors", slot_subscribe_errors, i64),
-                            ("error_str", e.to_string(), String),
-                        );
+                        // datapoint_error!(
+                        //     "slot_subscribe_error",
+                        //     ("errors", slot_subscribe_errors, i64),
+                        //     ("error_str", e.to_string(), String),
+                        // );
                     }
                 },
                 Err(e) => {
                     connect_errors += 1;
-                    datapoint_error!(
-                        "slot_subscribe_pubsub_connect_error",
-                        ("errors", connect_errors, i64),
-                        ("error_str", e.to_string(), String)
-                    );
+                    // datapoint_error!(
+                    //     "slot_subscribe_pubsub_connect_error",
+                    //     ("errors", connect_errors, i64),
+                    //     ("error_str", e.to_string(), String)
+                    // );
                 }
             }
         }
