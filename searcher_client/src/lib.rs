@@ -208,7 +208,7 @@ where
     pub async fn subscribe_bundle_results(
         &self,
         buffer_size: usize,
-    ) -> SearcherClientResult<Receiver<BundleResult>> {
+    ) -> SearcherClientResult<Receiver<Result<BundleResult, Status>>> {
         let (sender, receiver) = channel(buffer_size);
 
         let mut stream = self
@@ -228,11 +228,7 @@ where
                         return;
                     }
                     Some(res) => {
-                        if let Err(e) = res {
-                            error!("bundle results stream received error status: {e}");
-                            return;
-                        }
-                        res.unwrap()
+                        res
                     }
                 };
 
