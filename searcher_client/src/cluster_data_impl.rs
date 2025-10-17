@@ -28,6 +28,7 @@ use crate::{ClusterData, Slot};
 /// Convenient types.
 type JitoLeaderScheduleCache = Arc<Mutex<BTreeMap<Slot, LeaderScheduleCacheEntry>>>;
 
+#[derive(Debug)]
 struct LeaderScheduleCacheEntry {
     validator_identity: Arc<Pubkey>,
 }
@@ -119,14 +120,18 @@ impl ClusterDataImpl {
         <T as tonic::client::GrpcService<tonic::body::Body>>::Future: std::marker::Send,
     {
         const MAX_RETRIES: usize = 5;
+        let mut initial = true;
         while !exit.load(Ordering::Relaxed) {
-            let _ = fetch_interval.tick().await;
+            if !initial {
+                let _ = fetch_interval.tick().await;
+            }
             if let Some(connected_leaders_resp) = Self::fetch_connected_leaders_with_retries(
                 &mut searcher_service_client,
                 MAX_RETRIES,
             )
             .await
             {
+                initial = false;
                 let mut leader_schedule = HashMap::with_capacity(
                     connected_leaders_resp.connected_validators.values().len(),
                 );

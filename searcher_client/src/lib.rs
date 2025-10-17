@@ -115,17 +115,19 @@ where
         transactions: Vec<VersionedTransaction>,
         // Defines how many slots to lookahead for a jito-solana validator in order to
         // determine whether or not the bundle can be sent.
-        slot_lookahead: u64,
+        slot_lookahead: Option<u64>,
     ) -> SearcherClientResult<BundleId> {
-        let next_leader_slot = self
-            .cluster_data
-            .next_jito_validator()
-            .await
-            .ok_or(SearcherClientError::NoUpcomingJitoValidator)?
-            .1;
+        if let Some(slot_lookahead) = slot_lookahead {
+            let next_leader_slot = self
+                .cluster_data
+                .next_jito_validator()
+                .await
+                .ok_or(SearcherClientError::NoUpcomingJitoValidator)?
+                .1;
 
-        if next_leader_slot > slot_lookahead + self.cluster_data.current_slot().await {
-            return Err(SearcherClientError::NoUpcomingJitoValidator);
+            if next_leader_slot > slot_lookahead + self.cluster_data.current_slot().await {
+                return Err(SearcherClientError::NoUpcomingJitoValidator);
+            }
         }
 
         let resp = self
@@ -247,7 +249,7 @@ pub async fn grpc_connect(url: &str) -> SearcherClientResult<Channel> {
     let endpoint = if url.contains("https") {
         Endpoint::from_shared(url.to_string())
             .expect("invalid url")
-            .tls_config(transport::ClientTlsConfig::new())
+            .tls_config(transport::ClientTlsConfig::new().with_native_roots())
     } else {
         Endpoint::from_shared(url.to_string())
     }?;
@@ -271,5 +273,36 @@ pub mod utils {
         vec![
             tip_pda_0, tip_pda_1, tip_pda_2, tip_pda_3, tip_pda_4, tip_pda_5, tip_pda_6, tip_pda_7,
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{sync::{atomic::AtomicBool, Arc}, time::Duration};
+
+    use jito_protos::searcher::searcher_service_client::SearcherServiceClient;
+    use tokio::time::sleep;
+
+    use crate::{cluster_data_impl::ClusterDataImpl, grpc_connect, ClusterData};
+
+    #[tokio::test]
+    async fn test_validators() {
+        let exit = Arc::new(AtomicBool::new(false));
+        let rpc_pubsub_addr = "";
+        let grpc_conn = grpc_connect("https://mainnet.block-engine.jito.wtf:443").await.unwrap();
+
+        let searcher_service_client = SearcherServiceClient::new(grpc_conn);
+
+        let cluster_data_impl = ClusterDataImpl::new(
+            rpc_pubsub_addr.to_string(),
+            searcher_service_client.clone(),
+            exit.clone(),
+        )
+        .await;
+
+        sleep(Duration::from_secs(3)).await;
+
+        println!("Next validator: {:?}", cluster_data_impl.next_jito_validator().await);
+
     }
 }
